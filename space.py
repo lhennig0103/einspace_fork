@@ -1,5 +1,5 @@
 from einspace.search_spaces import EinSpace
-from .config import my_cfg
+from config import my_cfg
 
 class CustomEinSpace(EinSpace):
     def __init__(self, *args, **kwargs):

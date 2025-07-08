@@ -3,6 +3,7 @@ from pprint import pprint
 
 from einspace.compiler import Compiler
 from space import CustomEinSpace
+    from model_decoder import decode_genotype_to_model
 
 if __name__ == "__main__":
     torch.manual_seed(0)
@@ -29,9 +30,6 @@ if __name__ == "__main__":
     x = torch.randn(input_shape)
     y = model(x)
     print("\n🔹 Output shape:", y.shape)
-
-
-    from model_decoder import decode_genotype_to_model
 
     genotype = "conv3x3 relu conv5x5 bn relu identity softmax"
     model = decode_genotype_to_model(genotype)

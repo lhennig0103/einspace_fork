@@ -39,6 +39,22 @@ from einspace.layers import (
     cat_tensors1d2t,
 )
 
+# === Transformer Components ===
+from einspace.transformers import (
+    mha_self_attention,
+    transformer_encoder_block,
+    ff_block,
+    transformer_norm,
+)
+
+# === RNN Components ===
+from einspace.rnns import (
+    rnn_lstm,
+    rnn_gru,
+    rnn_basic,
+)
+
+# === Dropout
 def dropout(**kwargs):
     return nn.Dropout(p=0.5)
 
@@ -49,7 +65,6 @@ def dropout_low(**kwargs):
 
 # 1. Structural modules
 structure_ops = [sequential_module, computation_module, routing_module]
-
 
 # 2. Basic computation ops
 linear_ops = [linear32, linear64, linear128]
@@ -76,21 +91,31 @@ tensor_ops = [
     add_tensors, cat_tensors1d2t,
 ]
 
+# 7. Transformer-related
+attention_ops = [mha_self_attention, transformer_encoder_block, ff_block]
+normalization_ops = [transformer_norm]
+
+# 8. RNN-related
+rnn_ops = [rnn_lstm, rnn_gru, rnn_basic]
+
 # === Final Config ===
 my_cfg = {
     "network": structure_ops,
 
-    "first_fn": conv_ops + linear_ops + [ein_identity],
-    "second_fn": conv_ops + linear_ops + [ein_identity],
+    "first_fn": conv_ops + linear_ops + attention_ops + rnn_ops + [ein_identity],
+    "second_fn": conv_ops + linear_ops + attention_ops + rnn_ops + [ein_identity],
 
     "computation_fn": (
         conv_ops +
         linear_ops +
+        rnn_ops +
         dropout_ops +
         pooling_ops +
         activation_ops +
         tensor_ops +
-        positional_ops
+        positional_ops +
+        attention_ops +
+        normalization_ops
     ),
 
     "prerouting_fn": routing_pre,

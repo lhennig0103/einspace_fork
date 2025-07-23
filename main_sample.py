@@ -31,10 +31,3 @@ if __name__ == "__main__":
     y = model(x)
     print("\n🔹 Output shape:", y.shape)
 
-    genotype = "conv3x3 relu conv5x5 bn relu identity softmax"
-    model = decode_genotype_to_model(genotype)
-
-    x = torch.randn(1, 3, 32, 32)
-    y = model(x)
-    print("Output shape:", y.shape)
-

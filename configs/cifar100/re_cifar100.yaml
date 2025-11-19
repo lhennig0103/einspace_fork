@@ -32,4 +32,4 @@ search_strategy_sample_size: 10
 search_strategy_architecture_seed: "wideresnet16_4"
 search_strategy_continue_search: True
 
-log: False
+log: True

@@ -17,7 +17,7 @@ from einspace.data_utils.fsd50k import calculate_map
 from einspace.data_utils.ecg import f1_score_ecg
 from einspace.data_utils.deepsea import calculate_auroc
 from einspace.data_utils.cosmic import CosmicBCEWithLogitsLoss, CosmicMetricFunction
-
+from tracer import GPUTracer
 
 class Trainer:
     """
@@ -102,6 +102,7 @@ class Trainer:
             "momentum": None,
             "weight_decay": None,
             "epoch": 0,
+            "duration": 0
         }
 
     """
@@ -117,6 +118,8 @@ class Trainer:
     def sample_log_uniform(self, low, high):
         """Samples a scalar from a log-uniform distribution"""
         return 10 ** (low + (high - low) * torch.rand(1).item())
+    
+    
 
     def train(self):
         # if self.valid_dataloader is not None:
@@ -169,80 +172,17 @@ class Trainer:
             train_start = time()
             valid_score = 0.0
             train_score = 0.0
+            energy_results = {}
             for epoch in range(1, self.epochs + 1):
-                epoch_start = time()
-                model.train()
-                labels, predictions = [], []
-                try:
-                    for data, target in self.train_dataloader:
-                        if not self.config["load_in_gpu"]:
-                            data, target = data.to(self.device), target.to(
-                                self.device
-                            )
-                        optimizer.zero_grad()
-                        output = model(data)
-
-                        # store labels and predictions to compute accuracy
-                        if self.score == "xe":
-                            labels += target.cpu().tolist()
-                            predictions += torch.argmax(
-                                output.detach().cpu(), 1
-                            ).tolist()
-                        elif self.score == "multi_hot":
-                            labels += logits_to_preds(target.cpu(), self.score)[0]
-                            predictions += logits_to_preds(output.cpu(), self.score)[0]
-                        else:
-                            labels += target.cpu().tolist()
-                            predictions += output.detach().cpu().tolist()
-
-                        loss = self.criterion(output, target)
-                        if torch.isnan(loss):
-                            raise ValueError("Training loss became nan")
-                        loss.backward()
-                        optimizer.step()
-                    scheduler.step()
-
-                    valid_score = 0.
-                    if self.valid_dataloader is not None:
-                        # fsd50k evaluation is super slow. Only do it at the end
-                        if self.config["dataset"] == "fsd50k":
-                            if epoch == self.epochs:
-                                valid_score = self.evaluate(model, "val")
-                            else:
-                                valid_score = 0
-                        else:
-                            valid_score = self.evaluate(model, "val")
-                    elif self.test_dataloader is not None:
-                        # fsd50k evaluation is super slow. Only do it at the end
-                        if self.config["dataset"] == "fsd50k":
-                            if epoch == self.epochs:
-                                valid_score = self.evaluate(model, "test")
-                            else:
-                                valid_score = 0
-                        else:
-                            valid_score = self.evaluate(model, "test")
-                    else:
-                        raise Exception("No validation or test set provided")
-
-                    if self.log:
-                        print(
-                            "\tEpoch {:>3}/{:<3} | Train Loss: {:>6.2f} | Valid Score: {:>6.2f} | Epoch Time: {:>6}s".format(
-                                epoch,
-                                self.epochs,
-                                loss.item(),
-                                valid_score,
-                                int(time() - epoch_start),
-                            ),
-                            flush=True,
-                        )
-                except ValueError as e:
-                    # self.logger.write(f"{e}\n")
-                    print(f"Did loss become nan?: {e}")
-                    print(traceback.format_exc())
+                results = train_epoch(trainer=self,epoch=epoch,model=model,optimizer=optimizer,scheduler=scheduler)
+                print(results)
+                if results[0] == -1:
                     break
-
+                else:
+                    energy_results[epoch] = results[1]
             # save the best overall model
-            if valid_score > self.best["val_score"] or self.config["hpo_runs"] == 1:
+            
+            if valid_score > self.best["val_score"]: #or self.config["hpo_runs"] == 1:
                 self.best["val_score"] = valid_score
                 self.best["train_score"] = 0
                 self.best["model"] = deepcopy(model)
@@ -250,9 +190,10 @@ class Trainer:
                 self.best["momentum"] = mom
                 self.best["weight_decay"] = wd
                 self.best["epoch"] = epoch
-                self.best["duration"] = int(time() - train_start)
+            self.best["duration"] = int(time() - train_start)
             print(f"Training time: {int(time() - train_start)}s", flush=True)
-        return self.best
+        # energy_results = {epoch:results for epoch,results in energy_results.items() if epoch<=self.best["epoch"]}
+        return self.best,energy_results
 
     # print out the model's accuracy over the valid dataset
     def evaluate(self, model, split="val"):
@@ -372,3 +313,81 @@ class Trainer:
 
         # print full shape of predictions
         return score_fn(labels, predictions)
+
+
+
+# @GPUTracer(mode='normal', verbose=True,gpu_num=(0,1,2,3))
+@GPUTracer(mode='normal', verbose=True,gpu_num=(0))
+def train_epoch(trainer,epoch,model,optimizer,scheduler):
+    print(f"Starting epoch {epoch}")
+    epoch_start = time()
+    model.train()
+    labels, predictions = [], []
+    try:
+        for data, target in trainer.train_dataloader:
+            if not trainer.config["load_in_gpu"]:
+                data, target = data.to(trainer.device), target.to(
+                    trainer.device
+                )
+            optimizer.zero_grad()
+            output = model(data)
+
+            # store labels and predictions to compute accuracy
+            if trainer.score == "xe":
+                labels += target.cpu().tolist()
+                predictions += torch.argmax(
+                    output.detach().cpu(), 1
+                ).tolist()
+            elif trainer.score == "multi_hot":
+                labels += logits_to_preds(target.cpu(), trainer.score)[0]
+                predictions += logits_to_preds(output.cpu(), trainer.score)[0]
+            else:
+                labels += target.cpu().tolist()
+                predictions += output.detach().cpu().tolist()
+
+            loss = trainer.criterion(output, target)
+            if torch.isnan(loss):
+                raise ValueError("Training loss became nan")
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+
+        valid_score = 0.
+        if trainer.valid_dataloader is not None:
+            # fsd50k evaluation is super slow. Only do it at the end
+            if trainer.config["dataset"] == "fsd50k":
+                if epoch == trainer.epochs:
+                    valid_score = trainer.evaluate(model, "val")
+                else:
+                    valid_score = 0
+            else:
+                valid_score = trainer.evaluate(model, "val")
+        elif trainer.test_dataloader is not None:
+            # fsd50k evaluation is super slow. Only do it at the end
+            if trainer.config["dataset"] == "fsd50k":
+                if epoch == trainer.epochs:
+                    valid_score = trainer.evaluate(model, "test")
+                else:
+                    valid_score = 0
+            else:
+                valid_score = trainer.evaluate(model, "test")
+        else:
+            raise Exception("No validation or test set provided")
+
+        if trainer.log:
+            print(
+                "\tEpoch {:>3}/{:<3} | Train Loss: {:>6.2f} | Valid Score: {:>6.2f} | Epoch Time: {:>6}s".format(
+                    epoch,
+                    trainer.epochs,
+                    loss.item(),
+                    valid_score,
+                    int(time() - epoch_start),
+                ),
+                flush=True,
+            )
+    except ValueError as e:
+        # self.logger.write(f"{e}\n")
+        print(f"Did loss become nan?: {e}")
+        print(traceback.format_exc())
+        return -1
+    return 0

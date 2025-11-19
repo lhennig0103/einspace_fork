@@ -5,7 +5,7 @@ import torch
 import yaml
 from itertools import repeat
 
-from foresight.pruners.predictive import find_measures
+# from foresight.pruners.predictive import find_measures
 
 from einspace.compiler import Compiler
 from einspace.data import get_data_loaders
@@ -15,6 +15,7 @@ from einspace.search_strategies import RandomSearch, RegularisedEvolution
 from einspace.seed_architectures import seed_architectures
 from einspace.trainers import Trainer
 from einspace.utils import get_exp_name, set_seed
+from tracer import GPUTracer
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -75,7 +76,7 @@ if __name__ == "__main__":
         max_module_depth=config["search_space_max_module_depth"],
     )
     compiler = Compiler()
-
+    print("is this getting analysed")
     def evaluation_fn(architecture, modules):
         model = Network(
             modules,
@@ -93,45 +94,45 @@ if __name__ == "__main__":
             config=config,
             logger=None,
         )
-        best = trainer.train()
-        return best
+        best,energy_results = trainer.train()
+        return best,energy_results
 
     exp_name = get_exp_name(**config)
     print(exp_name)
 
     if config["search_strategy"] in ["re", "rm"]:
+        # if (
+        #     config["search_strategy_architecture_seed"] is not None
+        #     and "warmup" in config["search_strategy_architecture_seed"]
+        # ):
+        #     # def zero_cost_evaluation_fn(architecture, modules):
+        #     #     # zero-cost evaluate the architecture
+        #     #     model = Network(
+        #     #         modules,
+        #     #         architecture["output_shape"],
+        #     #         config["num_classes"],
+        #     #         config,
+        #     #     )
+        #     #     zero_cost_proxy = config["search_strategy_architecture_seed"].split("_")[-1]
+        #     #     measure = find_measures(
+        #     #         model,
+        #     #         train_loader,
+        #     #         ("random", 1, config["num_classes"]),
+        #     #         device=device,
+        #     #         measure_names=[zero_cost_proxy],
+        #     #     )
+        #     #     return {"val_score": measure}
+        #     random_search = RandomSearch(
+        #         search_space=einspace,
+        #         compiler=compiler,
+        #         evaluation_fn=zero_cost_evaluation_fn,
+        #         num_samples=config["search_strategy_warmup_samples"],
+        #         save_name=exp_name,
+        #         continue_search=config["search_strategy_continue_search"],
+        #     )
+        #     warmup_history = random_search.search()
+        #     architecture_seed = warmup_history[:config["search_strategy_init_pop_size"]]
         if (
-            config["search_strategy_architecture_seed"] is not None
-            and "warmup" in config["search_strategy_architecture_seed"]
-        ):
-            def zero_cost_evaluation_fn(architecture, modules):
-                # zero-cost evaluate the architecture
-                model = Network(
-                    modules,
-                    architecture["output_shape"],
-                    config["num_classes"],
-                    config,
-                )
-                zero_cost_proxy = config["search_strategy_architecture_seed"].split("_")[-1]
-                measure = find_measures(
-                    model,
-                    train_loader,
-                    ("random", 1, config["num_classes"]),
-                    device=device,
-                    measure_names=[zero_cost_proxy],
-                )
-                return {"val_score": measure}
-            random_search = RandomSearch(
-                search_space=einspace,
-                compiler=compiler,
-                evaluation_fn=zero_cost_evaluation_fn,
-                num_samples=config["search_strategy_warmup_samples"],
-                save_name=exp_name,
-                continue_search=config["search_strategy_continue_search"],
-            )
-            warmup_history = random_search.search()
-            architecture_seed = warmup_history[:config["search_strategy_init_pop_size"]]
-        elif (
             config["search_strategy_architecture_seed"] is not None and
             "+" in config["search_strategy_architecture_seed"]
         ):
@@ -194,6 +195,6 @@ if __name__ == "__main__":
         config=config,
         logger=None,
     )
-    best = trainer.train()
+    best,energy_results = trainer.train()
     # report best performance
     print(f"Best accuracy: {best.accuracy} at epoch {best.epoch}")

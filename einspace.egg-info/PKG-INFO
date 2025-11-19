@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: einspace
+Version: 0.0.2
+Summary: A space for architecture search in NNs that starts from low level primitives and assumes very minimal structure
+Author: xxxyyy
+Author-email: xxx@yyy
+License-File: LICENSE

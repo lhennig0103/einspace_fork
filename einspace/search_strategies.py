@@ -4,11 +4,12 @@ from copy import deepcopy
 from functools import partial
 from math import prod
 from os.path import exists, join
+from os import makedirs
 from pickle import dump, load
 from random import choice
 from time import time
 from itertools import cycle
-
+import json
 import psutil
 import torch
 import torch.multiprocessing as mp
@@ -55,6 +56,7 @@ class Individual(object):
         self.num_nonterminals = get_size(arch, "nonterminal")
         self.average_branching_factor = get_average_branching_factor(arch)
         self.max_depth = get_max_depth(arch)
+        self.duration = 0
 
         self.nodes = {
             node.__name__: 0
@@ -67,7 +69,24 @@ class Individual(object):
                 + EinSpace.computation_fns
             )
         }
+    def store_results(self,results,folder):
+        name = f"{self.id}"
+        output_dir = join("results",folder,"")
+        if not exists(output_dir):
+            makedirs(output_dir)
+        output_file = join(output_dir,name)
+        with open(output_file, "w") as f:
+            json.dump(results, f)
 
+    def load_results(self,results,folder):
+        name = f"{self.id}"
+        output_dir = join("results",folder,"")
+        if not exists(output_dir):
+            makedirs(output_dir)
+        output_file = join(output_dir,name)
+        with open(output_file, "r") as f:
+            results = json.load(f)
+        return results
     def get_descriptor(self):
         # return a simple vector representation of the individual including all numerical features
         return [
@@ -202,12 +221,14 @@ class RandomSearch:
                 )
         else:
             self.history = Population([])
-
+    
     def create_and_evaluate_individual(
         self, architecture, modules, id, parent_id
     ):
-        best_model = self.evaluation_fn(architecture, modules)
+        best_model,energy_results = self.evaluation_fn(architecture, modules)
+        
         individual = Individual(id, parent_id, architecture, modules)
+        individual.store_results(energy_results,self.save_name)
         individual.accuracy = best_model["val_score"]
         individual.duration = best_model["duration"]
         if "lr" in best_model:
@@ -330,8 +351,10 @@ class RegularisedEvolution:
     def create_and_evaluate_individual(
         self, architecture, modules, id, parent_id
     ):
-        best_model = self.evaluation_fn(architecture, modules)
+        best_model,energy_results = self.evaluation_fn(architecture, modules)
+        
         individual = Individual(id, parent_id, architecture, modules)
+        individual.store_results(energy_results,self.save_name)
         individual.accuracy = best_model["val_score"]
         individual.duration = best_model["duration"]
         individual.hpo_dict = {
@@ -370,6 +393,7 @@ class RegularisedEvolution:
                 mode == "sample"
         if mode == "sample":
             architecture = self.search_space.sample()
+            print(architecture)
             parent_id = None
         elif mode == "mutate":
             parent = self.population.tournament_selection(

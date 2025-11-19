@@ -1,3 +1,5 @@
 .env/
 .vscode/
 *.pyc
+.slurm_logs/
+.results/
